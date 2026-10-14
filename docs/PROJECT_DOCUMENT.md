@@ -87,7 +87,8 @@ Card provider, masked card number, card holder/assigned vehicle (optional), mont
 - Screens: "Current holder", "Previous holders" timeline on each asset; "Assets held now" and "Assets held previously" on each employee.
 
 ### 4.4 Condition monitoring
-- Condition scale: New, Good, Fair, Poor, Damaged, Under Repair, Lost, Disposed.
+- Condition scale: New, Good, Fair, Poor, Damaged.
+- Status (kept separate from condition): In stock, Assigned, Under repair, Lost, Disposed.
 - Condition log entries (date, condition, notes, photo, recorded by).
 - Users can report an issue; admins review and update condition.
 
@@ -134,6 +135,21 @@ Every create, update, assign, return, revalue, approve and delete action is logg
 ### 4.11 Approvals
 Disposal and write-off requests require Super Admin approval.
 
+### 4.12 Dispatch forms and form templates
+- A **dispatch form** is the paper or digital record signed when an asset is handed over (issued, transferred or sent to another location).
+- **Download:** from an assignment or dispatch, an admin downloads the form pre-filled with employee details, asset details, accessories, condition, date, issuing admin and a unique form number.
+- **Upload:** the completed and signed copy (PDF, JPG/PNG scan or phone photo, or Word/Excel) is uploaded and linked to that assignment. It appears in the asset's history and the employee's record.
+- **Form status:** Generated, Awaiting signed copy, Signed copy uploaded, Verified. Admins can list all assignments still awaiting a signed copy.
+- **Changeable structure:** the form layout is not hard-coded. Admins upload a template file (Word `.docx`, Excel `.xlsx` or PDF) containing placeholders such as `{{employee_name}}` and `{{asset_id}}`. On upload the system validates the placeholders and reports unknown ones.
+- **Versioning:** a new upload creates a new template version. Old versions are kept, because earlier forms were generated from them. Only one version per form type is active at a time.
+- **Supported behaviour by format:**
+  - Word and Excel templates: filled automatically with placeholders.
+  - PDF templates: filled automatically only if the PDF has form fields (AcroForm). A flat PDF without fields can be downloaded blank and printed, but cannot be auto-filled.
+- **Permissions:** Super Admin activates templates and can view all forms. Admin uploads template drafts, generates forms and uploads signed copies. User can view and download their own signed forms.
+- Uploaded files are validated (type, size), stored outside public folders and served only through a permission-checked endpoint.
+
+**Standard placeholders:** `form_number`, `date`, `company_name`, `employee_name`, `employee_number`, `department`, `designation`, `location`, `phone`, `asset_id`, `asset_name`, `category`, `brand`, `model`, `serial_number`, `imei`, `registration_number`, `sim_number`, `mobile_number`, `condition`, `accessories`, `issued_by`, `remarks`.
+
 ---
 
 ## 5. Data model (PostgreSQL)
@@ -151,6 +167,8 @@ Disposal and write-off requests require Super Admin approval.
 - `valuation_records`, `depreciation_rules`
 - `maintenance_records`
 - `approval_requests`
+- `form_templates` (form type, name, version, file, file type, placeholders found, is_active, uploaded_by, activated_by, notes)
+- `dispatch_forms` (form number, assignment, template version used, generated file, signed file, status, generated_by, uploaded_by, uploaded_at, verified_by, remarks)
 - `notifications`
 - `audit_logs`
 
@@ -208,11 +226,12 @@ One central server and one shared database. All clients use the same API, so bus
 | QR | `segno` or `qrcode` |
 | Reports | WeasyPrint or ReportLab (PDF), openpyxl (Excel) |
 | Images | Pillow |
+| Form templates | `docxtpl` (Word), `openpyxl` (Excel), `pypdf` (fillable PDF fields) |
 | Deployment | Linux, Nginx, Gunicorn, Docker |
 | Monitoring | Sentry, daily automated database backups |
 
 ### 6.2 Backend modules (one Django app each)
-`accounts`, `employees`, `assets`, `vehicles`, `itdevices`, `sims`, `fuelcards`, `assignments`, `valuation`, `maintenance`, `media`, `qrcodes`, `reports`, `dashboard`, `notifications`, `approvals`, `audit`.
+`accounts`, `employees`, `assets`, `vehicles`, `itdevices`, `sims`, `fuelcards`, `assignments`, `valuation`, `maintenance`, `media`, `qrcodes`, `reports`, `dashboard`, `notifications`, `approvals`, `audit`, `dispatch` (templates and forms).
 
 Each app contains the same small files: `models.py`, `serializers.py`, `views.py`, `urls.py`, `permissions.py`, `tests.py`, so any service can be updated independently.
 
@@ -250,6 +269,8 @@ hoplon/
 | QR | `GET assets/{id}/qr`, `POST qr/labels` |
 | Dashboard | `GET dashboard/summary`, `GET dashboard/my-assets` |
 | Reports | `GET reports/category`, `reports/consumer`, `reports/lifetime/{id}`, with `?format=pdf|xlsx` |
+| Form templates | `GET/POST form-templates`, `POST form-templates/{id}/activate`, `GET form-templates/{id}/download` |
+| Dispatch forms | `POST assignments/{id}/dispatch-form` (generate), `GET dispatch-forms/{id}/download`, `POST dispatch-forms/{id}/upload-signed`, `GET dispatch-forms?status=awaiting` |
 | Approvals | `POST approvals`, `POST approvals/{id}/decide` |
 | Audit | `GET audit` |
 
@@ -259,9 +280,9 @@ hoplon/
 
 **All roles:** Login; My Assets dashboard; Asset detail (including previous holders); Report an issue; Return request.
 
-**Admin and Super Admin:** Company dashboard; Asset list with filters; Add/edit asset (one form per category); Assign / transfer / return; Employees; QR labels; Condition log; Maintenance; Reports; Alerts; Bulk import.
+**Admin and Super Admin:** Company dashboard; Asset list with filters; Add/edit asset (one form per category); Assign / transfer / return; Employees; QR labels; Condition log; Maintenance; Reports; Alerts; Bulk import; Dispatch forms (generate, download, upload signed copy, pending list).
 
-**Super Admin only:** Admin management; Approvals; Audit log; Depreciation rules; System settings.
+**Super Admin only:** Form templates (upload, preview placeholders, activate, version history); Admin management; Approvals; Audit log; Depreciation rules; System settings.
 
 **Mobile app:** Login; scan QR; add new asset with camera; asset detail; assign/return; my assets; report issue.
 
@@ -283,21 +304,22 @@ hoplon/
 
 | # | Task | Output |
 |---|---|---|
-| 1 | Project skeleton | Folder layout, Django config, PostgreSQL connection, environment settings |
-| 2 | Accounts and roles | Custom user model, three roles, JWT login, permissions |
-| 3 | Employees | Employee, department, location models and API |
+| 1 | Project skeleton (done) | Folder layout, Django config, PostgreSQL connection, environment settings |
+| 2 | Accounts and roles (done) | Custom user model, three roles, JWT login, permissions |
+| 3 | Employees (done) | Employee, department, location models and API |
 | 4 | Assets | Shared asset table, categories, auto asset IDs |
 | 5 | Category details | Vehicles, IT devices, SIMs, fuel cards |
 | 6 | Media | Photo and document upload |
 | 7 | Assignments | Issue, transfer, return, previous-users history |
-| 8 | QR codes | Generation, lookup, label sheets |
-| 9 | Condition and valuation | Logs, depreciation, scheduled job |
-| 10 | Dashboard API | Counts and summaries |
-| 11 | Maintenance, alerts, approvals, audit | |
-| 12 | Reports | Category, consumer, lifetime, exports |
-| 13 | Web frontend | Screen by screen |
-| 14 | Mobile app | Screen by screen |
-| 15 | Desktop wrapper, import tool, deployment | |
+| 8 | Dispatch forms and templates | Template upload and versions, form generation (Word/Excel/PDF), signed copy upload |
+| 9 | QR codes | Generation, lookup, label sheets |
+| 10 | Condition and valuation | Logs, depreciation, scheduled job |
+| 11 | Dashboard API | Counts and summaries |
+| 12 | Maintenance, alerts, approvals, audit | |
+| 13 | Reports | Category, consumer, lifetime, exports |
+| 14 | Web frontend | Screen by screen |
+| 15 | Mobile app | Screen by screen |
+| 16 | Desktop wrapper, import tool, deployment | |
 
 Each task is delivered as a small set of files with exact paths and a commit message, and is tested before the next begins.
 

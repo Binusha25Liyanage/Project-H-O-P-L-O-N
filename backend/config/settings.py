@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     # Hoplon apps are added here task by task
     "accounts",
     "employees",
+    "assets",
 ]
 
 MIDDLEWARE = [
