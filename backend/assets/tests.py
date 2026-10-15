@@ -80,6 +80,13 @@ class AssetsApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_category_code_cannot_be_changed(self):
+        self.client.force_authenticate(self.super_admin)
+        response = self.client.patch(
+            f"/api/v1/categories/{self.it.id}/", {"code": "NEW"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+
     def test_duplicate_subcategory_in_same_category_rejected(self):
         self.client.force_authenticate(self.super_admin)
         response = self.client.post(

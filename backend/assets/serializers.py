@@ -1,6 +1,8 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from .details import get_detail_config
 from .models import Asset, AssetStatus, Category, SubCategory
 
 # Statuses an admin may set by hand. ASSIGNED is set by the assignment workflow
@@ -56,6 +58,10 @@ class CategorySerializer(_NoDeactivateWhileInUseMixin, serializers.ModelSerializ
         value = value.strip().upper()
         if not value:
             raise serializers.ValidationError("Code is required.")
+        if self.instance and value != self.instance.code:
+            raise serializers.ValidationError(
+                "Category codes cannot be changed once created."
+            )
         duplicates = Category.objects.filter(code=value)
         if self.instance:
             duplicates = duplicates.exclude(pk=self.instance.pk)
@@ -78,6 +84,9 @@ class AssetSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(
         source="created_by.username", read_only=True, default=None
     )
+    # Category-specific fields (vehicle, IT device, SIM, fuel card). Written here,
+    # shown in the response by to_representation below.
+    details = serializers.JSONField(write_only=True, required=False)
 
     class Meta:
         model = Asset
@@ -89,13 +98,18 @@ class AssetSerializer(serializers.ModelSerializer):
             "purchase_date", "purchase_cost", "current_value",
             "supplier", "invoice_number", "warranty_end_date",
             "location", "location_name", "department", "department_name",
-            "notes",
+            "notes", "details",
             "created_by", "created_by_username", "created_at", "updated_at",
         ]
         read_only_fields = [
             "id", "asset_id", "current_value",
             "created_by", "created_at", "updated_at",
         ]
+
+    def validate_details(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Details must be an object.")
+        return value
 
     def validate_status(self, value):
         if self.instance and value == self.instance.status:
@@ -162,4 +176,66 @@ class AssetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "The warranty end date cannot be before the purchase date."
             )
+        return self._validate_details(attrs, category)
+
+    def _validate_details(self, attrs, category):
+        instance = self.instance
+        details = attrs.pop("details", None)
+        config = get_detail_config(category)
+
+        if config is None:
+            if details is not None:
+                raise serializers.ValidationError(
+                    {"details": "This category has no extra details yet."}
+                )
+            return attrs
+
+        related_name, detail_class = config
+        existing = getattr(instance, related_name, None) if instance else None
+        if details is None:
+            if not instance:
+                raise serializers.ValidationError(
+                    {"details": "Details are required for this category."}
+                )
+            return attrs
+
+        detail_serializer = detail_class(
+            instance=existing,
+            data=details,
+            partial=bool(self.partial and existing is not None),
+            context=self.context,
+        )
+        try:
+            detail_serializer.is_valid(raise_exception=True)
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({"details": exc.detail})
+        attrs["_detail_serializer"] = detail_serializer
         return attrs
+
+    def create(self, validated_data):
+        detail_serializer = validated_data.pop("_detail_serializer", None)
+        with transaction.atomic():
+            asset = super().create(validated_data)
+            if detail_serializer:
+                detail_serializer.save(asset=asset)
+        return asset
+
+    def update(self, instance, validated_data):
+        detail_serializer = validated_data.pop("_detail_serializer", None)
+        with transaction.atomic():
+            asset = super().update(instance, validated_data)
+            if detail_serializer:
+                detail_serializer.save(asset=asset)
+        return asset
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        details = None
+        config = get_detail_config(instance.category)
+        if config:
+            related_name, detail_class = config
+            detail_object = getattr(instance, related_name, None)
+            if detail_object is not None:
+                details = detail_class(detail_object, context=self.context).data
+        data["details"] = details
+        return data

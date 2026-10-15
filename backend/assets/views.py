@@ -54,12 +54,16 @@ class SubCategoryViewSet(BaseRecordViewSet):
 class AssetViewSet(BaseRecordViewSet):
     permission_classes = [IsAdminOrSuperAdmin]
     serializer_class = AssetSerializer
-    search_fields = ["asset_id", "name", "supplier", "invoice_number", "description"]
+    search_fields = [
+        "asset_id", "name", "supplier", "invoice_number", "description",
+        "vehicle_details__registration_number", "vehicle_details__chassis_number",
+    ]
     ordering_fields = ["asset_id", "name", "purchase_date", "purchase_cost", "created_at"]
 
     def get_queryset(self):
         queryset = Asset.objects.select_related(
-            "category", "subcategory", "location", "department", "created_by"
+            "category", "subcategory", "location", "department", "created_by",
+            "vehicle_details",
         )
         params = self.request.query_params
         for param, field in (

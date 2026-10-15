@@ -307,8 +307,8 @@ hoplon/
 | 1 | Project skeleton (done) | Folder layout, Django config, PostgreSQL connection, environment settings |
 | 2 | Accounts and roles (done) | Custom user model, three roles, JWT login, permissions |
 | 3 | Employees (done) | Employee, department, location models and API |
-| 4 | Assets | Shared asset table, categories, auto asset IDs |
-| 5 | Category details | Vehicles, IT devices, SIMs, fuel cards |
+| 4 | Assets (done) | Shared asset table, categories, auto asset IDs |
+| 5 | Category details | 5a vehicles, 5b IT devices, 5c SIM cards, 5d fuel cards (one at a time) |
 | 6 | Media | Photo and document upload |
 | 7 | Assignments | Issue, transfer, return, previous-users history |
 | 8 | Dispatch forms and templates | Template upload and versions, form generation (Word/Excel/PDF), signed copy upload |
