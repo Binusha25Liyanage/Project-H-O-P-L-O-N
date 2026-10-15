@@ -19,6 +19,16 @@ class Category(models.Model):
         return self.name
 
 
+class DetailType(models.TextChoices):
+    """Which extra-details form an asset in a sub-category needs."""
+
+    NONE = "NONE", "No extra details"
+    VEHICLE = "VEHICLE", "Vehicle details"
+    IT_DEVICE = "IT_DEVICE", "IT device details"
+    SIM = "SIM", "SIM card details"
+    FUEL_CARD = "FUEL_CARD", "Fuel card details"
+
+
 class SubCategory(models.Model):
     """Car, Lorry, Laptop, Printer, SIM Card, and so on."""
 
@@ -26,6 +36,9 @@ class SubCategory(models.Model):
         Category, on_delete=models.PROTECT, related_name="subcategories"
     )
     name = models.CharField(max_length=100)
+    detail_type = models.CharField(
+        max_length=20, choices=DetailType.choices, default=DetailType.NONE
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

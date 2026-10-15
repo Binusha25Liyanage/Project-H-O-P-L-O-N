@@ -57,13 +57,15 @@ class AssetViewSet(BaseRecordViewSet):
     search_fields = [
         "asset_id", "name", "supplier", "invoice_number", "description",
         "vehicle_details__registration_number", "vehicle_details__chassis_number",
+        "it_device_details__serial_number", "it_device_details__imei",
+        "it_device_details__imei_2",
     ]
     ordering_fields = ["asset_id", "name", "purchase_date", "purchase_cost", "created_at"]
 
     def get_queryset(self):
         queryset = Asset.objects.select_related(
             "category", "subcategory", "location", "department", "created_by",
-            "vehicle_details",
+            "vehicle_details", "it_device_details",
         )
         params = self.request.query_params
         for param, field in (

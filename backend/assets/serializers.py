@@ -3,7 +3,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .details import get_detail_config
-from .models import Asset, AssetStatus, Category, SubCategory
+from .models import Asset, AssetStatus, Category, DetailType, SubCategory
 
 # Statuses an admin may set by hand. ASSIGNED is set by the assignment workflow
 # (Task 7) and DISPOSED by the approval workflow (Task 12).
@@ -31,8 +31,21 @@ class SubCategorySerializer(_NoDeactivateWhileInUseMixin, serializers.ModelSeria
 
     class Meta:
         model = SubCategory
-        fields = ["id", "category", "category_name", "name", "is_active"]
+        fields = ["id", "category", "category_name", "name", "detail_type", "is_active"]
         read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if (
+            self.instance
+            and "detail_type" in attrs
+            and attrs["detail_type"] != self.instance.detail_type
+            and self.instance.assets.exists()
+        ):
+            raise serializers.ValidationError(
+                "The detail type cannot be changed while assets use this sub-category."
+            )
+        return attrs
 
     def validate_category(self, value):
         if self.instance and self.instance.category_id != value.pk:
@@ -176,17 +189,17 @@ class AssetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "The warranty end date cannot be before the purchase date."
             )
-        return self._validate_details(attrs, category)
+        return self._validate_details(attrs, subcategory)
 
-    def _validate_details(self, attrs, category):
+    def _validate_details(self, attrs, subcategory):
         instance = self.instance
         details = attrs.pop("details", None)
-        config = get_detail_config(category)
+        config = get_detail_config(subcategory)
 
         if config is None:
             if details is not None:
                 raise serializers.ValidationError(
-                    {"details": "This category has no extra details yet."}
+                    {"details": "This sub-category has no extra details."}
                 )
             return attrs
 
@@ -195,7 +208,7 @@ class AssetSerializer(serializers.ModelSerializer):
         if details is None:
             if not instance:
                 raise serializers.ValidationError(
-                    {"details": "Details are required for this category."}
+                    {"details": "Details are required for this sub-category."}
                 )
             return attrs
 
@@ -231,7 +244,7 @@ class AssetSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         details = None
-        config = get_detail_config(instance.category)
+        config = get_detail_config(instance.subcategory)
         if config:
             related_name, detail_class = config
             detail_object = getattr(instance, related_name, None)

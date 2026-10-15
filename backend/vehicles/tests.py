@@ -3,7 +3,7 @@ from decimal import Decimal
 from rest_framework.test import APITestCase
 
 from accounts.models import Role, User
-from assets.models import Asset, Category, SubCategory
+from assets.models import Asset, Category, DetailType, SubCategory
 from employees.models import Location
 
 from .models import VehicleDetails
@@ -19,7 +19,9 @@ class VehicleDetailsApiTests(APITestCase):
         self.location = Location.objects.create(name="Head Office")
         self.vehicles = Category.objects.create(name="Vehicles", code="VEH")
         self.it = Category.objects.create(name="IT Equipment", code="ITE")
-        self.car = SubCategory.objects.create(category=self.vehicles, name="Car")
+        self.car = SubCategory.objects.create(
+            category=self.vehicles, name="Car", detail_type=DetailType.VEHICLE
+        )
         self.laptop = SubCategory.objects.create(category=self.it, name="Laptop")
         self.client.force_authenticate(self.admin)
 

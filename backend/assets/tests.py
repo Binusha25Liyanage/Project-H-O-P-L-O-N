@@ -9,7 +9,7 @@ from rest_framework.test import APITestCase
 from accounts.models import Role, User
 from employees.models import Department, Location
 
-from .models import Asset, AssetStatus, Category, SubCategory
+from .models import Asset, AssetStatus, Category, DetailType, SubCategory
 
 PASSWORD = "Str0ng-Pass-12345"
 
@@ -86,6 +86,42 @@ class AssetsApiTests(APITestCase):
             f"/api/v1/categories/{self.it.id}/", {"code": "NEW"}, format="json"
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_seed_sets_detail_types_and_fixes_existing_ones(self):
+        SubCategory.objects.all().delete()
+        Category.objects.all().delete()
+        call_command("seed_categories")
+        types = {s.name: s.detail_type for s in SubCategory.objects.all()}
+        self.assertEqual(types["Car"], DetailType.VEHICLE)
+        self.assertEqual(types["Laptop"], DetailType.IT_DEVICE)
+        self.assertEqual(types["SIM Card"], DetailType.SIM)
+        self.assertEqual(types["Fuel Card"], DetailType.FUEL_CARD)
+        # A sub-category created before detail types existed gets fixed
+        SubCategory.objects.filter(name="Laptop").update(detail_type=DetailType.NONE)
+        call_command("seed_categories")
+        self.assertEqual(
+            SubCategory.objects.get(name="Laptop").detail_type, DetailType.IT_DEVICE
+        )
+
+    def test_detail_type_cannot_change_while_assets_exist(self):
+        self.make_asset()
+        self.client.force_authenticate(self.super_admin)
+        response = self.client.patch(
+            f"/api/v1/subcategories/{self.laptop.id}/",
+            {"detail_type": DetailType.SIM},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_detail_type_can_be_set_when_no_assets_use_it(self):
+        self.client.force_authenticate(self.super_admin)
+        response = self.client.patch(
+            f"/api/v1/subcategories/{self.car.id}/",
+            {"detail_type": DetailType.VEHICLE},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["detail_type"], DetailType.VEHICLE)
 
     def test_duplicate_subcategory_in_same_category_rejected(self):
         self.client.force_authenticate(self.super_admin)

@@ -10,7 +10,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(SubCategory)
 class SubCategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "category", "is_active")
+    list_display = ("name", "category", "detail_type", "is_active")
     list_filter = ("category", "is_active")
 
 
